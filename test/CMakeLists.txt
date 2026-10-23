@@ -13,6 +13,10 @@ if(MSVC)
   target_compile_options(test_utf8 PRIVATE /utf-8)
 endif(MSVC)
 
+add_executable(test_utf8_classes test_utf8_classes.c)
+target_link_libraries(test_utf8_classes onig)
+add_test(NAME utf8_classes COMMAND test_utf8_classes)
+
 add_executable(test_syntax test_syntax.c)
 target_link_libraries(test_syntax onig)
 if(MSVC)

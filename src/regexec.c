@@ -66,6 +66,40 @@ static int forward_search(regex_t* reg, const UChar* str, const UChar* end, UCha
 static int
 search_in_range(regex_t* reg, const UChar* str, const UChar* end, const UChar* start, const UChar* range, /* match range */ const UChar* data_range, /* subject string range */ OnigRegion* region, OnigOptionType option, OnigMatchParam* mp);
 
+/* Unlike the encoding's length callback, this checks the bytes up to end. */
+static int
+valid_utf8_char_len(const UChar* p, const UChar* end)
+{
+  unsigned int c;
+  int len, i;
+
+  if (p >= end) return 0;
+
+  c = *p;
+  if (c < 0x80) return 1;
+  if (c >= 0xc2 && c <= 0xdf)
+    len = 2;
+  else if (c >= 0xe0 && c <= 0xef)
+    len = 3;
+  else if (c >= 0xf0 && c <= 0xf4)
+    len = 4;
+  else
+    return 0;
+
+  if (end - p < len) return 0;
+  for (i = 1; i < len; i++) {
+    if (p[i] < 0x80 || p[i] > 0xbf) return 0;
+  }
+
+  if ((c == 0xe0 && p[1] < 0xa0) ||
+      (c == 0xed && p[1] > 0x9f) ||
+      (c == 0xf0 && p[1] < 0x90) ||
+      (c == 0xf4 && p[1] > 0x8f))
+    return 0;
+
+  return len;
+}
+
 #ifdef USE_TIME_LIMIT
 #if defined(_WIN32) && !defined(__GNUC__)
 
@@ -2725,6 +2759,9 @@ static int string_cmp_ic(OnigEncoding enc, int case_fold_flag,
 #define DATA_ENSURE_CHECK1     (s < right_range)
 #define DATA_ENSURE_CHECK(n)   ((n) <= right_range - s)
 #define DATA_ENSURE(n)         if (right_range - s < (n)) goto fail
+#define DATA_ENSURE_VALID_UTF8_CLASS \
+  if ((options & ONIG_OPTION_VALID_UTF8_CLASSES) != 0 && \
+      valid_utf8_char_len(s, right_range) == 0) goto fail
 
 #define INIT_RIGHT_RANGE    right_range = (UChar* )in_right_range
 
@@ -3564,6 +3601,7 @@ match_at(regex_t* reg, const UChar* str, const UChar* end,
 
     CASE_OP(CCLASS)
       DATA_ENSURE(1);
+      DATA_ENSURE_VALID_UTF8_CLASS;
       if (BITSET_AT(p->cclass.bsp, *s) == 0) goto fail;
       if (ONIGENC_IS_MBC_HEAD(encode, s)) goto fail;
       s++;
@@ -3572,6 +3610,7 @@ match_at(regex_t* reg, const UChar* str, const UChar* end,
 
     CASE_OP(CCLASS_MB)
       DATA_ENSURE(1);
+      DATA_ENSURE_VALID_UTF8_CLASS;
       if (! ONIGENC_IS_MBC_HEAD(encode, s)) goto fail;
 
     cclass_mb:
@@ -3592,6 +3631,7 @@ match_at(regex_t* reg, const UChar* str, const UChar* end,
 
     CASE_OP(CCLASS_MIX)
       DATA_ENSURE(1);
+      DATA_ENSURE_VALID_UTF8_CLASS;
       if (ONIGENC_IS_MBC_HEAD(encode, s)) {
         goto cclass_mb;
       }
@@ -3606,6 +3646,7 @@ match_at(regex_t* reg, const UChar* str, const UChar* end,
 
     CASE_OP(CCLASS_NOT)
       DATA_ENSURE(1);
+      DATA_ENSURE_VALID_UTF8_CLASS;
       if (BITSET_AT(p->cclass.bsp, *s) != 0) goto fail;
       s += enclen(encode, s);
       INC_OP;
@@ -3613,6 +3654,7 @@ match_at(regex_t* reg, const UChar* str, const UChar* end,
 
     CASE_OP(CCLASS_MB_NOT)
       DATA_ENSURE(1);
+      DATA_ENSURE_VALID_UTF8_CLASS;
       if (! ONIGENC_IS_MBC_HEAD(encode, s)) {
         s++;
         goto cc_mb_not_success;
@@ -3642,6 +3684,7 @@ match_at(regex_t* reg, const UChar* str, const UChar* end,
 
     CASE_OP(CCLASS_MIX_NOT)
       DATA_ENSURE(1);
+      DATA_ENSURE_VALID_UTF8_CLASS;
       if (ONIGENC_IS_MBC_HEAD(encode, s)) {
         goto cclass_mb_not;
       }
@@ -4956,6 +4999,9 @@ onig_regset_search_with_param(OnigRegSet* set,
   const UChar *orig_start = start;
   const UChar *orig_range = range;
 
+  if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0)
+    return ONIGERR_INVALID_ARGUMENT;
+
   if (set->n == 0)
     return ONIG_MISMATCH;
 
@@ -5140,6 +5186,9 @@ onig_regset_search(OnigRegSet* set, const UChar* str, const UChar* end,
   int i;
   OnigMatchParam* mp;
   OnigMatchParam** mps;
+
+  if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0)
+    return ONIGERR_INVALID_ARGUMENT;
 
   mps = (OnigMatchParam** )xmalloc((sizeof(OnigMatchParam*) + sizeof(OnigMatchParam)) * set->n);
   CHECK_NULL_RETURN_MEMERR(mps);
@@ -5385,6 +5434,10 @@ onig_match_with_param(regex_t* reg, const UChar* str, const UChar* end,
 {
   int r;
   MatchArg msa;
+
+  if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0 &&
+      reg->enc != ONIG_ENCODING_UTF8)
+    return ONIGERR_INVALID_ARGUMENT;
 
 #ifndef USE_POSIX_API
   if (OPTON_POSIX_REGION(option)) return ONIGERR_INVALID_ARGUMENT;
@@ -5683,6 +5736,10 @@ search_in_range(regex_t* reg, const UChar* str, const UChar* end,
   MatchArg msa;
   const UChar *orig_start = start;
 
+  if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0 &&
+      (reg->enc != ONIG_ENCODING_UTF8 || range < start || range > end))
+    return ONIGERR_INVALID_ARGUMENT;
+
 #ifdef ONIG_DEBUG_SEARCH
   fprintf(DBGFP,
      "onig_search (entry point): str: %p, end: %d, start: %d, range: %d\n",
@@ -5724,6 +5781,24 @@ search_in_range(regex_t* reg, const UChar* str, const UChar* end,
       goto match;\
     }\
     else goto finish; /* error */ \
+  }
+
+  if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0) {
+    int len;
+
+    /* Existing pruning assumes well-formed characters. Try every candidate
+       instead, recovering one byte at a time after malformed UTF-8. */
+    MATCH_ARG_INIT(msa, reg, option, region, orig_start, mp);
+    s = (UChar* )start;
+    while (1) {
+      MATCH_AND_RETURN_CHECK(data_range);
+      if (s >= range || s >= end) break;
+      len = valid_utf8_char_len(s, end);
+      if (len == 0) len = 1;
+      if (range - s < len) break;
+      s += len;
+    }
+    goto mismatch;
   }
 
   forward = (range > start);
@@ -6060,6 +6135,10 @@ onig_scan(regex_t* reg, const UChar* str, const UChar* end,
   int rs;
   const UChar* start;
 
+  if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0 &&
+      reg->enc != ONIG_ENCODING_UTF8)
+    return ONIGERR_INVALID_ARGUMENT;
+
   if (OPTON_CHECK_VALIDITY_OF_STRING(option)) {
     if (! ONIGENC_IS_VALID_MBC_STRING(reg->enc, str, end))
       return ONIGERR_INVALID_WIDE_CHAR_VALUE;
@@ -6079,7 +6158,12 @@ onig_scan(regex_t* reg, const UChar* str, const UChar* end,
 
       if (region->end[0] == start - str) {
         if (start >= end) break;
-        start += enclen(reg->enc, start);
+        if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0) {
+          int len = valid_utf8_char_len(start, end);
+          start += len == 0 ? 1 : len;
+        }
+        else
+          start += enclen(reg->enc, start);
       }
       else
         start = str + region->end[0];

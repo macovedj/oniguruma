@@ -6,9 +6,9 @@ AM_CFLAGS = -Wall -Wno-invalid-source-encoding
 AM_CPPFLAGS = -I$(top_srcdir)/src
 
 if ENABLE_POSIX_API
-TESTS = test_utf8 test_syntax test_options testc testp testcu test_regset test_back
+TESTS = test_utf8 test_utf8_classes test_syntax test_options testc testp testcu test_regset test_back
 else
-TESTS = test_utf8 test_syntax test_options testc testcu test_regset test_back
+TESTS = test_utf8 test_utf8_classes test_syntax test_options testc testcu test_regset test_back
 endif
 
 check_PROGRAMS = $(TESTS)
@@ -16,6 +16,8 @@ check_PROGRAMS = $(TESTS)
 test: test_uchar test_regex_t $(TESTS)
 	@echo "[Oniguruma API, UTF-8 check]"
 	@./test_utf8  | grep RESULT
+	@echo "[Oniguruma API, valid UTF-8 classes check]"
+	@./test_utf8_classes
 	@echo "[Oniguruma API, SYNTAX check]"
 	@./test_syntax  | grep RESULT
 	@echo "[Oniguruma API, Options check]"
@@ -47,6 +49,9 @@ test_regex_t:
 
 test_utf8_SOURCES = test_utf8.c
 test_utf8_LDADD = $(lib_onig)
+
+test_utf8_classes_SOURCES = test_utf8_classes.c
+test_utf8_classes_LDADD = $(lib_onig)
 
 test_syntax_SOURCES = test_syntax.c
 test_syntax_LDADD = $(lib_onig)

@@ -328,6 +328,7 @@ Oniguruma API  Version 6.9.10  2024/06/26
 
   Search string and return search result and matching region.
   Do not pass invalid byte string in the regex character encoding.
+  ONIG_OPTION_VALID_UTF8_CLASSES provides the limited UTF-8 exception below.
 
   return value
   normal:    match position offset (i.e.  p - str >= 0)
@@ -369,6 +370,34 @@ Oniguruma API  Version 6.9.10  2024/06/26
 
     ONIG_OPTION_MATCH_WHOLE_STRING  Try to match the whole of (str), rather than returning after the first match is found.
 
+    ONIG_OPTION_VALID_UTF8_CLASSES
+      Require a valid UTF-8 character when evaluating a character-class atom,
+      including a negated class. Invalid bytes do not satisfy the class.
+      Forward search retries after invalid bytes instead of rejecting the
+      entire subject, preserving the original byte offsets. A failed class
+      does not consume the invalid byte, so repetition can return a shorter
+      valid match and a later search can find a following valid character.
+
+      This is a search-time option for the built-in ONIG_ENCODING_UTF8 only.
+      It is supported by search, match and scan (including the _with_param
+      variants). Backward search (range < start), other encodings, regsets,
+      and use as a compile-time option return ONIGERR_INVALID_ARGUMENT.
+      With range == start, search tries that one candidate. Search still
+      honors the normal subject/match range and can find an empty end match.
+
+      The enabled search uses a conservative forward candidate loop instead
+      of the normal anchor, map and literal-search optimizations. This also
+      applies to valid input and can reduce performance. The compiled regex
+      is not modified, and searches without the option retain their behavior.
+
+      This option defines class validity and forward candidate recovery, not
+      general matching semantics for invalid UTF-8. Literal atom matching,
+      dot, word operators/boundaries, case folding, backreferences and
+      lookbehind retain their existing semantics. Patterns using those
+      features do not gain general invalid-input support from this option.
+      ONIG_OPTION_CHECK_VALIDITY_OF_STRING, when also supplied, still performs
+      its existing whole-subject check before searching.
+
 
 # int onig_search_with_param(regex_t* reg, const UChar* str, const UChar* end,
                    const UChar* start, const UChar* range, OnigRegion* region,
@@ -376,6 +405,7 @@ Oniguruma API  Version 6.9.10  2024/06/26
 
   Search string and return search result and matching region.
   Do not pass invalid byte string in the regex character encoding.
+  The ONIG_OPTION_VALID_UTF8_CLASSES exception is described under onig_search().
 
   arguments
   1-7:  same as onig_search()
@@ -387,6 +417,7 @@ Oniguruma API  Version 6.9.10  2024/06/26
 
   Match string and return result and matching region.
   Do not pass invalid byte string in the regex character encoding.
+  The ONIG_OPTION_VALID_UTF8_CLASSES exception is described under onig_search().
 
   return value
   normal:    match length  (>= 0)
@@ -411,6 +442,7 @@ Oniguruma API  Version 6.9.10  2024/06/26
     ONIG_OPTION_NOT_BEGIN_POSITION  Do not regard the (start) as start position of search  (* fail \G)
     ONIG_OPTION_CALLBACK_EACH_MATCH Call back for all successful matches.
     ONIG_OPTION_MATCH_WHOLE_STRING  Try to match the whole of (str), rather than returning after the first match is found.
+    ONIG_OPTION_VALID_UTF8_CLASSES See onig_search(); invalid class characters fail at the supplied match position.
 
 # int onig_match_with_param(regex_t* reg, const UChar* str, const UChar* end,
                             const UChar* at, OnigRegion* region,
@@ -418,6 +450,7 @@ Oniguruma API  Version 6.9.10  2024/06/26
 
   Match string and return result and matching region.
   Do not pass invalid byte string in the regex character encoding.
+  The ONIG_OPTION_VALID_UTF8_CLASSES exception is described under onig_search().
 
    arguments
    1-6:  same as onig_match()
@@ -431,6 +464,9 @@ Oniguruma API  Version 6.9.10  2024/06/26
 
   Scan string and callback with matching region.
   Do not pass invalid byte string in the regex character encoding.
+  The ONIG_OPTION_VALID_UTF8_CLASSES exception is described under onig_search().
+  With that option, advancing after an empty match also recovers one byte
+  at a time over invalid input.
 
   return value
   normal:       number of matching times

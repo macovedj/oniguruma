@@ -7700,6 +7700,10 @@ onig_reg_init(regex_t* reg, OnigOptionType option, OnigCaseFoldType case_fold_fl
   else
     option |= syntax->options;
 
+  /* This policy is selected per search/match, not while compiling a regex. */
+  if ((option & ONIG_OPTION_VALID_UTF8_CLASSES) != 0)
+    return ONIGERR_INVALID_ARGUMENT;
+
   if ((option & ONIG_OPTION_IGNORECASE_IS_ASCII) != 0) {
     case_fold_flag &= ~(INTERNAL_ONIGENC_CASE_FOLD_MULTI_CHAR |
                         ONIGENC_CASE_FOLD_TURKISH_AZERI);
